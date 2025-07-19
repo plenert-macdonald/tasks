@@ -212,6 +212,11 @@ class MainActivity : AppCompatActivity() {
                                     AddAccountDialog.Platform.LOCAL ->
                                         addAccountViewModel.createLocalAccount()
 
+                                    AddAccountDialog.Platform.TODOIST ->
+                                        syncLauncher.launch(
+                                            Intent(this@MainActivity, TodoistAccountSettingsActivity::class.java)
+                                        )
+
                                     else -> throw IllegalArgumentException()
                                 }
                             },

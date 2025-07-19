@@ -38,6 +38,7 @@ class AddAccountDialog : DialogFragment() {
         ETESYNC,
         DECSYNC_CC,
         LOCAL,
+        TODOIST,
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
