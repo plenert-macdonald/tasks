@@ -79,6 +79,7 @@ import org.tasks.preferences.Preferences
 import org.tasks.preferences.fragments.FRAG_TAG_IMPORT_TASKS
 import org.tasks.sync.AddAccountDialog
 import org.tasks.sync.SyncAdapters
+import org.tasks.todoist.TodoistAccountSettingsActivity
 import org.tasks.sync.microsoft.MicrosoftSignInViewModel
 import org.tasks.themes.ColorProvider
 import org.tasks.themes.TasksTheme
