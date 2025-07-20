@@ -32,13 +32,14 @@ class AddAccountDialog : DialogFragment() {
         TASKS_ORG,
         GOOGLE_TASKS,
         TODOIST,
+
         MICROSOFT,
         DAVX5,
         CALDAV,
         ETESYNC,
         DECSYNC_CC,
         LOCAL,
-        TODOIST,
+
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
