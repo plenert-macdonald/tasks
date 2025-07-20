@@ -26,11 +26,10 @@ class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Tool
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding.serverSelector.visibility = View.GONE
-        binding.showAdvanced.visibility = View.VISIBLE
-        binding.showAdvanced.setOnCheckedChangeListener { _, _ ->
-            updateUrlVisibility()
-        }
-        updateUrlVisibility()
+        binding.showAdvanced.visibility = View.GONE
+        binding.urlLayout.visibility = View.GONE
+        binding.userLayout.visibility = View.GONE
+        binding.passwordLayout.hint = getString(R.string.todoist_api_token)
     }
 
     override fun onResume() {
