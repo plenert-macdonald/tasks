@@ -24,7 +24,9 @@ class TodoistClientProvider @Inject constructor(
             account.getPassword(encryption))
 
     suspend fun forUrl(url: String, username: String, password: String?, session: String? = null, foreground: Boolean = false): TodoistClient = withContext(Dispatchers.IO) {
-        // Stubbed implementation for Todoist API
-        TodoistClient(context, username, caldavDao)
+        // The Todoist API token is stored as the password or session
+        val apiToken = session ?: password
+        // Create the TodoistClient with HttpClientFactory for API requests
+        TodoistClient(context, username, caldavDao, httpClientFactory, encryption)
     }
 }
