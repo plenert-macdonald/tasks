@@ -457,12 +457,14 @@ class TodoistClient(
 
                     if (commandStatus != null && commandStatus.optString("status") == "ok") {
                         // Update collection in cache
-                        val collection = cache.collectionGet(Unit, projectId)
-                        collection.meta.name = name
-                        collection.meta.color = todoistColor
-                        collection.meta.mtime = currentTimeMillis()
+                        val existingCollection = cache.collectionGet(Unit, projectId)
+                        val updatedCollection = existingCollection.apply {
+                            meta.name = name
+                            meta.color = todoistColor
+                            meta.mtime = currentTimeMillis()
+                        }
 
-                        cache.collectionSet(Unit, collection)
+                        cache.collectionSet(Unit, updatedCollection)
 
                         return@withContext projectId
                     }
