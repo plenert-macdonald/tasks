@@ -65,7 +65,13 @@ class TodoistSynchronizer @Inject constructor(
             // Get collections from Todoist
             val collections = client.getCollections()
             if (collections.isEmpty()) {
-                setError(account, context.getString(R.string.no_lists_found))
+                // Use a Todoist-specific string resource; fall back to generic if missing
+                val msg = try {
+                    context.getString(R.string.todoist_no_lists_found)
+                } catch (e: Exception) {
+                    context.getString(R.string.no_lists_found)
+                }
+                setError(account, msg)
                 return
             }
 
