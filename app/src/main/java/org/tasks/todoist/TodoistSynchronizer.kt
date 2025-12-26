@@ -65,7 +65,7 @@ class TodoistSynchronizer @Inject constructor(
             // Get collections from Todoist
             val collections = client.getCollections()
             if (collections.isEmpty()) {
-                setError(account, context.getString(R.string.no_lists_found))
+                setError(account, context.getString(R.string.todoist_no_lists_found))
                 return
             }
 
@@ -113,7 +113,7 @@ class TodoistSynchronizer @Inject constructor(
             account.lastSync = currentTimeMillis()
             caldavDao.update(account)
 
-            localBroadcastManager.refreshList()
+            localBroadcastManager.broadcastRefreshList()
         } catch (e: Exception) {
             setError(account, e)
         }
@@ -125,7 +125,7 @@ class TodoistSynchronizer @Inject constructor(
     private suspend fun setError(account: CaldavAccount, message: String?) {
         account.error = message
         caldavDao.update(account)
-        localBroadcastManager.refreshList()
+        localBroadcastManager.broadcastRefreshList()
         if (!isNullOrEmpty(message)) {
             Timber.e(message)
         }
@@ -278,12 +278,19 @@ class TodoistSynchronizer @Inject constructor(
 
                         if (newVtodo != null) {
                             // Create new CaldavTask
-                            val task = CaldavTask().apply {
-                                calendar = caldavCalendar.id
-                                remoteId = item.uid
-                                `object` = item.contentString
-                                etag = item.meta.mtime.toString()
-                            }
+                            val task = CaldavTask(
+                                id = 0L,
+                                seen0 = 0L,
+                                calendar = caldavCalendar.id,
+                                remoteId = item.uid,
+                                obj = item.contentString,
+                                etag = item.meta.mtime.toString(),
+                                lastSync = currentTimeMillis(),
+                                deleted = 0L,
+                                remoteParent = null,
+                                isMoved = 0L,
+                                remoteOrder = 0L,
+                            )
 
                             // Insert task with Todoist data
                             val taskUid = UUIDHelper.newUUID()
@@ -301,7 +308,7 @@ class TodoistSynchronizer @Inject constructor(
                         if (newVtodo != null) {
                             // Update the task data
                             existing.etag = item.meta.mtime.toString()
-                            existing.`object` = item.contentString
+                            existing.obj = item.contentString
                             existing.dirty = 0L
 
                             // Update the task in database
@@ -312,7 +319,7 @@ class TodoistSynchronizer @Inject constructor(
                 }
             }
 
-            localBroadcastManager.refreshList()
+            localBroadcastManager.broadcastRefreshList()
         } catch (e: Exception) {
             Timber.e(e, "Error applying Todoist entries")
         }
