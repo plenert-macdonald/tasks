@@ -731,4 +731,5 @@ File %1$s contained %2$s.\n\n
   <string name="todoist_account_description">Sync your tasks with Todoist</string>
   <string name="todoist_api_token">API Token</string>
   <string name="widget_view_more_tasks">View more tasks</string>
+  <string name="todoist_no_lists_found">No Todoist projects found</string>
 </resources>

@@ -69,7 +69,7 @@ class TodoistSynchronizer @Inject constructor(
                 val msg = try {
                     context.getString(R.string.todoist_no_lists_found)
                 } catch (e: Exception) {
-                    context.getString(R.string.no_lists_found)
+                    context.getString(R.string.caldav_home_set_not_found)
                 }
                 setError(account, msg)
                 return
