@@ -11,7 +11,6 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import org.tasks.data.dao.CaldavDao
-import org.tasks.data.entity.CaldavAccount
 import org.tasks.data.entity.CaldavCalendar
 import org.tasks.data.entity.CaldavTask
 import org.tasks.http.HttpClientFactory
