@@ -3,7 +3,6 @@ package org.tasks.todoist
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -11,16 +10,16 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
-import org.tasks.data.entity.CaldavCalendar
 import org.tasks.data.dao.CaldavDao
+import org.tasks.data.entity.CaldavAccount
+import org.tasks.data.entity.CaldavCalendar
 import org.tasks.data.entity.CaldavTask
-import org.tasks.data.getPassword
 import org.tasks.http.HttpClientFactory
 import org.tasks.security.KeyStoreEncryption
 import org.tasks.time.DateTimeUtils2.currentTimeMillis
 import timber.log.Timber
 import java.io.IOException
-import java.util.*
+import java.util.UUID
 
 class TodoistClient(
     private val context: Context,
@@ -40,13 +39,13 @@ class TodoistClient(
         return httpClient!!
     }
 
-    fun getSession(): String {
-        val account = caldavDao
-            .getAccountByName(username)
-            ?: return "todoist-session"
-        // The API token is stored as the password
-        return account.password ?: "todoist-session"
-    }
+    /**
+     * Returns the Todoist API token for this username.
+     *
+     * For now this is just the username itself (the API token is entered in the
+     * "password" field in the UI and stored as the account username).
+     */
+    fun getSession(): String = username
 
     suspend fun getCollections(): List<TodoistCollection> = withContext(Dispatchers.IO) {
         try {
@@ -71,13 +70,15 @@ class TodoistClient(
                 val collections = mutableListOf<TodoistCollection>()
                 for (i in 0 until projects.length()) {
                     val project = projects.optJSONObject(i) ?: continue
-                    collections.add(TodoistCollection().apply {
-                        uid = project.optString("id", "")
-                        meta.name = project.optString("name", "")
-                        meta.color = project.optString("color", null)
-                        meta.mtime = currentTimeMillis()
-                        stoken = newSyncToken
-                    })
+                    collections.add(
+                        TodoistCollection().apply {
+                            uid = project.optString("id", "")
+                            meta.name = project.optString("name", "")
+                            meta.color = project.optString("color", null)
+                            meta.mtime = currentTimeMillis()
+                            stoken = newSyncToken
+                        }
+                    )
                 }
 
                 // Cache the collections
@@ -137,10 +138,8 @@ class TodoistClient(
 
                 callback(Pair(newSyncToken, todoistItems))
             } else {
-                // If the request fails, try to get items from cache
-                val cachedItems = mutableListOf<TodoistItem>()
-                // We don't have a way to list all items in the cache, so we'll return an empty list
-                callback(Pair(null, cachedItems))
+                // If the request fails, return empty list
+                callback(Pair(null, emptyList()))
             }
         } catch (e: Exception) {
             Timber.e(e, "Failed to fetch Todoist items for collection ${collection.uid}")
@@ -160,7 +159,11 @@ class TodoistClient(
         }
     }
 
-    suspend fun updateItem(collection: TodoistCollection, task: CaldavTask, content: ByteArray): TodoistItem = withContext(Dispatchers.IO) {
+    suspend fun updateItem(
+        collection: TodoistCollection,
+        task: CaldavTask,
+        content: ByteArray
+    ): TodoistItem = withContext(Dispatchers.IO) {
         try {
             val token = getSession()
             val taskContent = String(content)
@@ -171,18 +174,21 @@ class TodoistClient(
 
             // Create or update the task
             val command = JSONObject().apply {
-                put("type", if (task.remoteid.isNullOrEmpty()) "item_add" else "item_update")
+                put("type", if (task.remoteId.isNullOrEmpty()) "item_add" else "item_update")
                 put("uuid", commandUuid)
-                put("args", JSONObject().apply {
-                    if (!task.remoteid.isNullOrEmpty()) {
-                        put("id", task.remoteid)
-                    } else {
-                        put("project_id", collection.uid)
-                        put("temp_id", tempId)
+                put(
+                    "args",
+                    JSONObject().apply {
+                        if (!task.remoteId.isNullOrEmpty()) {
+                            put("id", task.remoteId)
+                        } else {
+                            put("project_id", collection.uid)
+                            put("temp_id", tempId)
+                        }
+                        put("content", taskContent)
+                        // Additional task properties can be added here
                     }
-                    put("content", taskContent)
-                    // Additional task properties can be added here
-                })
+                )
             }
 
             val json = JSONObject().apply {
@@ -199,11 +205,12 @@ class TodoistClient(
                 if (commandStatus != null && commandStatus.optString("status") == "ok") {
                     // For item_add, we need to get the permanent id
                     val tempIdMapping = response.optJSONObject("temp_id_mapping")
-                    val permanentId = if (tempIdMapping != null && task.remoteid.isNullOrEmpty()) {
-                        tempIdMapping.optString(tempId, "")
-                    } else {
-                        task.remoteid ?: ""
-                    }
+                    val permanentId =
+                        if (tempIdMapping != null && task.remoteId.isNullOrEmpty()) {
+                            tempIdMapping.optString(tempId, "")
+                        } else {
+                            task.remoteId ?: ""
+                        }
 
                     val todoistItem = TodoistItem().apply {
                         uid = permanentId
@@ -228,53 +235,57 @@ class TodoistClient(
         }
     }
 
-    suspend fun deleteItem(collection: TodoistCollection, task: CaldavTask): TodoistItem? = withContext(Dispatchers.IO) {
-        try {
-            val token = getSession()
-            val taskId = task.remoteid ?: return@withContext null
+    suspend fun deleteItem(collection: TodoistCollection, task: CaldavTask): TodoistItem? =
+        withContext(Dispatchers.IO) {
+            try {
+                val token = getSession()
+                val taskId = task.remoteId ?: return@withContext null
 
-            // Generate a unique command UUID
-            val commandUuid = UUID.randomUUID().toString()
+                // Generate a unique command UUID
+                val commandUuid = UUID.randomUUID().toString()
 
-            val command = JSONObject().apply {
-                put("type", "item_delete")
-                put("uuid", commandUuid)
-                put("args", JSONObject().apply {
-                    put("id", taskId)
-                })
-            }
-
-            val json = JSONObject().apply {
-                put("token", token)
-                put("commands", JSONArray().put(command))
-            }
-
-            val response = makeSyncRequest(json.toString())
-            if (response != null) {
-                val syncStatus = response.optJSONObject("sync_status") ?: JSONObject()
-                val commandStatus = syncStatus.optJSONObject(commandUuid)
-
-                if (commandStatus != null && commandStatus.optString("status") == "ok") {
-                    // Create a TodoistItem with deleted flag
-                    val todoistItem = TodoistItem().apply {
-                        uid = taskId
-                        isDeleted = true
-                        meta.mtime = currentTimeMillis()
-                    }
-
-                    // Remove from cache
-                    cache.itemSet(Unit, collection.uid, todoistItem)
-
-                    return@withContext todoistItem
+                val command = JSONObject().apply {
+                    put("type", "item_delete")
+                    put("uuid", commandUuid)
+                    put(
+                        "args",
+                        JSONObject().apply {
+                            put("id", taskId)
+                        }
+                    )
                 }
-            }
 
-            return@withContext null
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to delete Todoist item ${task.remoteid}")
-            return@withContext null
+                val json = JSONObject().apply {
+                    put("token", token)
+                    put("commands", JSONArray().put(command))
+                }
+
+                val response = makeSyncRequest(json.toString())
+                if (response != null) {
+                    val syncStatus = response.optJSONObject("sync_status") ?: JSONObject()
+                    val commandStatus = syncStatus.optJSONObject(commandUuid)
+
+                    if (commandStatus != null && commandStatus.optString("status") == "ok") {
+                        // Create a TodoistItem with deleted flag
+                        val todoistItem = TodoistItem().apply {
+                            uid = taskId
+                            isDeleted = true
+                            meta.mtime = currentTimeMillis()
+                        }
+
+                        // Remove from cache
+                        cache.itemSet(Unit, collection.uid, todoistItem)
+
+                        return@withContext todoistItem
+                    }
+                }
+
+                return@withContext null
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to delete Todoist item ${task.remoteId}")
+                return@withContext null
+            }
         }
-    }
 
     suspend fun updateCache(collection: TodoistCollection, items: List<TodoistItem>) {
         try {
@@ -286,57 +297,67 @@ class TodoistClient(
         }
     }
 
-    suspend fun uploadChanges(collection: TodoistCollection, items: List<TodoistItem>) = withContext(Dispatchers.IO) {
-        try {
-            val token = getSession()
-            val commands = JSONArray()
+    suspend fun uploadChanges(collection: TodoistCollection, items: List<TodoistItem>) =
+        withContext(Dispatchers.IO) {
+            try {
+                val token = getSession()
+                val commands = JSONArray()
 
-            for (item in items) {
-                val commandUuid = UUID.randomUUID().toString()
+                for (item in items) {
+                    val commandUuid = UUID.randomUUID().toString()
 
-                // Determine if item is new, updated, or deleted
-                val command = JSONObject().apply {
-                    if (item.isDeleted) {
-                        put("type", "item_delete")
-                        put("uuid", commandUuid)
-                        put("args", JSONObject().apply {
-                            put("id", item.uid)
-                        })
-                    } else if (item.uid.isEmpty()) {
-                        // New item
-                        put("type", "item_add")
-                        put("uuid", commandUuid)
-                        put("args", JSONObject().apply {
-                            put("project_id", collection.uid)
-                            put("content", item.contentString)
-                            put("temp_id", UUID.randomUUID().toString())
-                        })
-                    } else {
-                        // Existing item - update
-                        put("type", "item_update")
-                        put("uuid", commandUuid)
-                        put("args", JSONObject().apply {
-                            put("id", item.uid)
-                            put("content", item.contentString)
-                        })
+                    // Determine if item is new, updated, or deleted
+                    val command = JSONObject().apply {
+                        if (item.isDeleted) {
+                            put("type", "item_delete")
+                            put("uuid", commandUuid)
+                            put(
+                                "args",
+                                JSONObject().apply {
+                                    put("id", item.uid)
+                                }
+                            )
+                        } else if (item.uid.isEmpty()) {
+                            // New item
+                            put("type", "item_add")
+                            put("uuid", commandUuid)
+                            put(
+                                "args",
+                                JSONObject().apply {
+                                    put("project_id", collection.uid)
+                                    put("content", item.contentString)
+                                    put("temp_id", UUID.randomUUID().toString())
+                                }
+                            )
+                        } else {
+                            // Existing item - update
+                            put("type", "item_update")
+                            put("uuid", commandUuid)
+                            put(
+                                "args",
+                                JSONObject().apply {
+                                    put("id", item.uid)
+                                    put("content", item.contentString)
+                                }
+                            )
+                        }
                     }
+
+                    commands.put(command)
                 }
 
-                commands.put(command)
-            }
+                if (commands.length() > 0) {
+                    val json = JSONObject().apply {
+                        put("token", token)
+                        put("commands", commands)
+                    }
 
-            if (commands.length() > 0) {
-                val json = JSONObject().apply {
-                    put("token", token)
-                    put("commands", commands)
+                    makeSyncRequest(json.toString())
                 }
-
-                makeSyncRequest(json.toString())
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to upload changes to Todoist")
             }
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to upload changes to Todoist")
         }
-    }
 
     suspend fun logout() {
         try {
@@ -359,11 +380,14 @@ class TodoistClient(
             val command = JSONObject().apply {
                 put("type", "project_add")
                 put("uuid", commandUuid)
-                put("args", JSONObject().apply {
-                    put("name", name)
-                    put("color", todoistColor)
-                    put("temp_id", tempId)
-                })
+                put(
+                    "args",
+                    JSONObject().apply {
+                        put("name", name)
+                        put("color", todoistColor)
+                        put("temp_id", tempId)
+                    }
+                )
             }
 
             val json = JSONObject().apply {
@@ -399,54 +423,58 @@ class TodoistClient(
         }
     }
 
-    suspend fun updateCollection(calendar: CaldavCalendar, name: String, color: Int): String = withContext(Dispatchers.IO) {
-        try {
-            val token = getSession()
-            val projectId = calendar.url ?: return@withContext "todoist-collection-id"
-            val commandUuid = UUID.randomUUID().toString()
+    suspend fun updateCollection(calendar: CaldavCalendar, name: String, color: Int): String =
+        withContext(Dispatchers.IO) {
+            try {
+                val token = getSession()
+                val projectId = calendar.url ?: return@withContext "todoist-collection-id"
+                val commandUuid = UUID.randomUUID().toString()
 
-            val hexColor = color.toHexColor()
-            val todoistColor = mapHexToTodoistColor(hexColor)
+                val hexColor = color.toHexColor()
+                val todoistColor = mapHexToTodoistColor(hexColor)
 
-            val command = JSONObject().apply {
-                put("type", "project_update")
-                put("uuid", commandUuid)
-                put("args", JSONObject().apply {
-                    put("id", projectId)
-                    put("name", name)
-                    put("color", todoistColor)
-                })
-            }
-
-            val json = JSONObject().apply {
-                put("token", token)
-                put("commands", JSONArray().put(command))
-            }
-
-            val response = makeSyncRequest(json.toString())
-            if (response != null) {
-                val syncStatus = response.optJSONObject("sync_status") ?: JSONObject()
-                val commandStatus = syncStatus.optJSONObject(commandUuid)
-
-                if (commandStatus != null && commandStatus.optString("status") == "ok") {
-                    // Update collection in cache
-                    val collection = cache.collectionGet(Unit, projectId)
-                    collection.meta.name = name
-                    collection.meta.color = todoistColor
-                    collection.meta.mtime = currentTimeMillis()
-
-                    cache.collectionSet(Unit, collection)
-
-                    return@withContext projectId
+                val command = JSONObject().apply {
+                    put("type", "project_update")
+                    put("uuid", commandUuid)
+                    put(
+                        "args",
+                        JSONObject().apply {
+                            put("id", projectId)
+                            put("name", name)
+                            put("color", todoistColor)
+                        }
+                    )
                 }
-            }
 
-            return@withContext projectId
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to update Todoist collection ${calendar.url}")
-            return@withContext calendar.url ?: "todoist-collection-id"
+                val json = JSONObject().apply {
+                    put("token", token)
+                    put("commands", JSONArray().put(command))
+                }
+
+                val response = makeSyncRequest(json.toString())
+                if (response != null) {
+                    val syncStatus = response.optJSONObject("sync_status") ?: JSONObject()
+                    val commandStatus = syncStatus.optJSONObject(commandUuid)
+
+                    if (commandStatus != null && commandStatus.optString("status") == "ok") {
+                        // Update collection in cache
+                        val collection = cache.collectionGet(Unit, projectId)
+                        collection.meta.name = name
+                        collection.meta.color = todoistColor
+                        collection.meta.mtime = currentTimeMillis()
+
+                        cache.collectionSet(Unit, collection)
+
+                        return@withContext projectId
+                    }
+                }
+
+                return@withContext projectId
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to update Todoist collection ${calendar.url}")
+                return@withContext calendar.url ?: "todoist-collection-id"
+            }
         }
-    }
 
     suspend fun deleteCollection(calendar: CaldavCalendar) = withContext(Dispatchers.IO) {
         try {
@@ -457,9 +485,12 @@ class TodoistClient(
             val command = JSONObject().apply {
                 put("type", "project_delete")
                 put("uuid", commandUuid)
-                put("args", JSONObject().apply {
-                    put("id", projectId)
-                })
+                put(
+                    "args",
+                    JSONObject().apply {
+                        put("id", projectId)
+                    }
+                )
             }
 
             val json = JSONObject().apply {
@@ -499,7 +530,7 @@ class TodoistClient(
                 return JSONObject(responseBody)
             }
 
-            Timber.e("Todoist API request failed: ${response.code} - ${responseBody}")
+            Timber.e("Todoist API request failed: ${response.code} - $responseBody")
             return null
         } catch (e: IOException) {
             Timber.e(e, "Network error during Todoist API request")
@@ -515,7 +546,7 @@ class TodoistClient(
 
     private fun mapHexToTodoistColor(hexColor: String?): String {
         // Mapping closest hex colors to Todoist color names
-        return when (hexColor?.toUpperCase()) {
+        return when (hexColor?.uppercase()) {
             "#B8256F" -> "berry_red"
             "#DB4035" -> "red"
             "#FF9933" -> "orange"
@@ -535,15 +566,13 @@ class TodoistClient(
     }
 
     companion object {
-        private const val TYPE_TASKS = "todoist.tasks"
-        private const val MAX_FETCH = 30L
-
-        private fun Int.toHexColor(): String? = takeIf { this != 0 }?.let {
-            java.lang.String.format("#%06X", 0xFFFFFF and it)
-        }
+        private fun Int.toHexColor(): String? =
+            takeIf { this != 0 }?.let {
+                String.format("#%06X", 0xFFFFFF and it)
+            }
     }
 
-    // Stub classes to replace Etebase specific classes
+    // Stub classes to represent Todoist entities
     class TodoistCollection {
         var uid: String = ""
         var stoken: String = ""

@@ -1,7 +1,6 @@
 package org.tasks.todoist
 
 import android.content.Context
-import android.graphics.Color
 import at.bitfire.ical4android.ICalendar.Companion.prodId
 import com.todoroo.astrid.service.TaskDeleter
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -17,6 +16,7 @@ import org.tasks.data.UUIDHelper
 import org.tasks.data.dao.CaldavDao
 import org.tasks.data.entity.CaldavAccount
 import org.tasks.data.entity.CaldavCalendar
+import org.tasks.data.entity.CaldavTask
 import org.tasks.time.DateTimeUtils2.currentTimeMillis
 import timber.log.Timber
 import javax.inject.Inject
@@ -24,7 +24,7 @@ import org.tasks.todoist.TodoistClient.TodoistCollection
 import org.tasks.todoist.TodoistClient.TodoistItem
 
 class TodoistSynchronizer @Inject constructor(
-    @param:ApplicationContext private val context: Context,
+    @ApplicationContext private val context: Context,
     private val caldavDao: CaldavDao,
     private val localBroadcastManager: LocalBroadcastManager,
     private val taskDeleter: TaskDeleter,
@@ -91,12 +91,13 @@ class TodoistSynchronizer @Inject constructor(
             collections.forEach { collection ->
                 if (calendars.none { it.url == collection.uid }) {
                     // Create a new calendar for this collection
-                    val calendar = CaldavCalendar()
-                    calendar.account = account.id
-                    calendar.url = collection.uid
-                    calendar.name = collection.meta.name
-                    calendar.color = collection.meta.color?.let { parseColor(it) } ?: 0
-                    calendar.ctag = collection.stoken
+                    val calendar = CaldavCalendar().apply {
+                        account = account.id
+                        url = collection.uid
+                        name = collection.meta.name
+                        color = collection.meta.color?.let { parseColor(it) } ?: 0
+                        ctag = collection.stoken
+                    }
 
                     val calendarId = caldavDao.insert(calendar)
                     val newCalendar = caldavDao.getCalendar(calendarId)
@@ -112,19 +113,19 @@ class TodoistSynchronizer @Inject constructor(
             account.lastSync = currentTimeMillis()
             caldavDao.update(account)
 
-            localBroadcastManager.broadcastRefreshList()
+            localBroadcastManager.refreshList()
         } catch (e: Exception) {
             setError(account, e)
         }
     }
 
     private suspend fun setError(account: CaldavAccount, e: Throwable) =
-            setError(account, e.message)
+        setError(account, e.message)
 
     private suspend fun setError(account: CaldavAccount, message: String?) {
         account.error = message
         caldavDao.update(account)
-        localBroadcastManager.broadcastRefreshList()
+        localBroadcastManager.refreshList()
         if (!isNullOrEmpty(message)) {
             Timber.e(message)
         }
@@ -183,15 +184,15 @@ class TodoistSynchronizer @Inject constructor(
 
             localTasks.forEach { task ->
                 when {
-                    task.deleted == 1 -> tasksToDelete.add(task)
-                    task.remoteid.isNullOrBlank() -> tasksToCreate.add(task)
-                    task.dirty == 1 -> tasksToUpdate.add(task)
+                    task.deleted == 1L -> tasksToDelete.add(task)
+                    task.remoteId.isNullOrBlank() -> tasksToCreate.add(task)
+                    task.dirty == 1L -> tasksToUpdate.add(task)
                 }
             }
 
             // Process deletions
             tasksToDelete.forEach { task ->
-                client.deleteItem(collection, task)?.let { item ->
+                client.deleteItem(collection, task)?.let {
                     // Apply the deletion locally
                     taskDeleter.delete(task.task)
                 }
@@ -208,9 +209,9 @@ class TodoistSynchronizer @Inject constructor(
                 val item = client.updateItem(collection, task, content)
                 if (item.uid.isNotEmpty()) {
                     // Update task with remote ID
-                    task.remoteid = item.uid
-                    task.dirty = 0
-                    task.etag = System.currentTimeMillis().toString()
+                    task.remoteId = item.uid
+                    task.dirty = 0L
+                    task.etag = currentTimeMillis().toString()
                     caldavDao.update(task)
 
                     itemsToUpdate.add(item)
@@ -225,8 +226,8 @@ class TodoistSynchronizer @Inject constructor(
                 val item = client.updateItem(collection, task, content)
                 if (item.uid.isNotEmpty()) {
                     // Mark task as clean
-                    task.dirty = 0
-                    task.etag = System.currentTimeMillis().toString()
+                    task.dirty = 0L
+                    task.etag = currentTimeMillis().toString()
                     caldavDao.update(task)
 
                     itemsToUpdate.add(item)
@@ -254,14 +255,15 @@ class TodoistSynchronizer @Inject constructor(
         }
 
         try {
-            val existingTasks = caldavDao.getTasks(caldavCalendar.id, TodoistSyncAdapter.TYPE)
-                .associateBy { it.remoteid }
+            val existingTasks = caldavDao
+                .getTasks(caldavCalendar.id, TodoistSyncAdapter.TYPE)
+                .associateBy { it.remoteId }
 
             for (item in items) {
                 if (item.isDeleted) {
                     // Handle deleted items
                     existingTasks[item.uid]?.let { task ->
-                        if (task.deleted == 0) {
+                        if (task.deleted == 0L) {
                             // Mark as deleted locally
                             taskDeleter.delete(task.task)
                         }
@@ -276,28 +278,31 @@ class TodoistSynchronizer @Inject constructor(
 
                         if (newVtodo != null) {
                             // Create new CaldavTask
-                            val task = CaldavTask()
-                            task.calendar = caldavCalendar.id
-                            task.remoteid = item.uid
-                            task.object_ = item.contentString
-                            task.etag = item.meta.mtime.toString()
+                            val task = CaldavTask().apply {
+                                calendar = caldavCalendar.id
+                                remoteId = item.uid
+                                `object` = item.contentString
+                                etag = item.meta.mtime.toString()
+                            }
 
                             // Insert task with Todoist data
-                            UUIDHelper.newUUID().let { taskUid ->
-                                val taskId = iCal.createTask(newVtodo, taskUid, TodoistSyncAdapter.TYPE, caldavCalendar)
-                                task.task = taskId
-                                caldavDao.insert(task)
-                            }
+                            val taskUid = UUIDHelper.newUUID()
+                            val taskId =
+                                iCal.createTask(newVtodo, taskUid, TodoistSyncAdapter.TYPE, caldavCalendar)
+                            task.task = taskId
+                            caldavDao.insert(task)
                         }
-                    } else if (!isLocalChange && item.meta.mtime > existing.etag?.toLongOrNull() ?: 0) {
+                    } else if (!isLocalChange &&
+                        item.meta.mtime > (existing.etag?.toLongOrNull() ?: 0L)
+                    ) {
                         // Update existing task if remote version is newer
                         val newVtodo = iCal.parse(item.content)
 
                         if (newVtodo != null) {
                             // Update the task data
                             existing.etag = item.meta.mtime.toString()
-                            existing.object_ = item.contentString
-                            existing.dirty = 0
+                            existing.`object` = item.contentString
+                            existing.dirty = 0L
 
                             // Update the task in database
                             iCal.updateTask(newVtodo, existing.task, TodoistSyncAdapter.TYPE)
@@ -307,7 +312,7 @@ class TodoistSynchronizer @Inject constructor(
                 }
             }
 
-            localBroadcastManager.broadcastRefreshList()
+            localBroadcastManager.refreshList()
         } catch (e: Exception) {
             Timber.e(e, "Error applying Todoist entries")
         }
