@@ -65,7 +65,7 @@ class TodoistSynchronizer @Inject constructor(
             // Get collections from Todoist
             val collections = client.getCollections()
             if (collections.isEmpty()) {
-                setError(account, context.getString(R.string.todoist_no_lists_found))
+                setError(account, context.getString(R.string.no_lists_found))
                 return
             }
 
@@ -113,7 +113,7 @@ class TodoistSynchronizer @Inject constructor(
             account.lastSync = currentTimeMillis()
             caldavDao.update(account)
 
-            localBroadcastManager.broadcastRefreshList()
+            localBroadcastManager.refreshList()
         } catch (e: Exception) {
             setError(account, e)
         }
@@ -125,7 +125,7 @@ class TodoistSynchronizer @Inject constructor(
     private suspend fun setError(account: CaldavAccount, message: String?) {
         account.error = message
         caldavDao.update(account)
-        localBroadcastManager.broadcastRefreshList()
+        localBroadcastManager.refreshList()
         if (!isNullOrEmpty(message)) {
             Timber.e(message)
         }
@@ -279,7 +279,6 @@ class TodoistSynchronizer @Inject constructor(
                         if (newVtodo != null) {
                             // Create new CaldavTask
                             val task = CaldavTask(
-                                id = 0L,
                                 seen0 = 0L,
                                 calendar = caldavCalendar.id,
                                 remoteId = item.uid,
@@ -319,7 +318,7 @@ class TodoistSynchronizer @Inject constructor(
                 }
             }
 
-            localBroadcastManager.broadcastRefreshList()
+            localBroadcastManager.refreshList()
         } catch (e: Exception) {
             Timber.e(e, "Error applying Todoist entries")
         }
