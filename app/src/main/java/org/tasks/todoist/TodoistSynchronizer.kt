@@ -43,10 +43,8 @@ class TodoistSynchronizer @Inject constructor(
         Timber.d("Synchronizing $account")
         Thread.currentThread().contextClassLoader = context.classLoader
 
-        if (!inventory.hasPro) {
-            setError(account, context.getString(R.string.requires_pro_subscription))
-            return
-        }
+        // Todoist does not require a Pro subscription, so we skip the Pro check here.
+
         if (isNullOrEmpty(account.password)) {
             setError(account, context.getString(R.string.password_required))
             return
