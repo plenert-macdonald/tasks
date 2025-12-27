@@ -18,15 +18,27 @@ class TodoistClientProvider @Inject constructor(
     private val httpClientFactory: HttpClientFactory,
 ) {
     suspend fun forAccount(account: CaldavAccount): TodoistClient = forUrl(
-            account.url!!,
-            account.username!!,
-            null,
-            account.getPassword(encryption))
+        account.url ?: "todoist://api",
+        account.username!!,
+        null,
+        account.getPassword(encryption)
+    )
 
-    suspend fun forUrl(url: String, username: String, password: String?, session: String? = null, foreground: Boolean = false): TodoistClient = withContext(Dispatchers.IO) {
+    /**
+     * For Todoist we never actually use the `url` parameter to perform browser redirects.
+     * The API endpoint is fixed inside TodoistClient; `url` is only stored on the account
+     * for consistency with other providers.
+     */
+    suspend fun forUrl(
+        url: String,
+        username: String,
+        password: String?,
+        session: String? = null,
+        foreground: Boolean = false
+    ): TodoistClient = withContext(Dispatchers.IO) {
         // The Todoist API token is stored as the password or session
         val apiToken = session ?: password
         // Create the TodoistClient with HttpClientFactory for API requests
-        TodoistClient(context, username, caldavDao, httpClientFactory, encryption)
+        TodoistClient(context, apiToken ?: username, caldavDao, httpClientFactory, encryption)
     }
 }

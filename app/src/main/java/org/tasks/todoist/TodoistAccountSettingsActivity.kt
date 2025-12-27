@@ -82,21 +82,24 @@ class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Tool
 
     override suspend fun updateAccount(url: String, username: String, password: String) =
         updateAccountViewModel.updateAccount(
-                url,
-                username,
-                if (PASSWORD_MASK == password) null else password,
-                caldavAccount!!.getPassword(encryption))
+            url,
+            username,
+            if (PASSWORD_MASK == password) null else password,
+            caldavAccount!!.getPassword(encryption)
+        )
 
     override suspend fun updateAccount() {
         caldavAccount!!.name = newName
         saveAccountAndFinish()
     }
 
+    /**
+     * For Todoist we don't actually use a user-entered URL. We return a fixed internal
+     * marker URL so that any generic code that expects a URL has something to store,
+     * but it should never be opened in a browser.
+     */
     override val newURL: String
-        get() =
-            super.newURL
-                    .takeIf { it.isNotBlank() }
-                    ?: getString(R.string.todoist_url)
+        get() = "todoist://api"
 
     override val newPassword: String
         get() = binding.password.text.toString().trim { it <= ' ' }
@@ -107,8 +110,8 @@ class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Tool
         if (caldavAccount!!.id == Task.NO_ID) {
             caldavDao.insert(caldavAccount!!)
             firebase.logEvent(
-                    R.string.event_sync_add_account,
-                    R.string.param_type to Constants.SYNC_TYPE_TODOIST
+                R.string.event_sync_add_account,
+                R.string.param_type to Constants.SYNC_TYPE_TODOIST
             )
         } else {
             caldavDao.update(caldavAccount!!)
