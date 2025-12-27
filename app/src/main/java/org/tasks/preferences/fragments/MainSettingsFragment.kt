@@ -43,6 +43,7 @@ import org.tasks.sync.AddAccountDialog.Companion.EXTRA_SELECTED
 import org.tasks.sync.AddAccountDialog.Companion.newAccountDialog
 import org.tasks.sync.AddAccountDialog.Platform
 import org.tasks.sync.microsoft.MicrosoftSignInViewModel
+import org.tasks.todoist.TodoistAccountSettingsActivity
 import org.tasks.widget.AppWidgetManager
 import javax.inject.Inject
 
@@ -121,7 +122,10 @@ class MainSettingsFragment : InjectingPreferenceFragment() {
                         REQUEST_GOOGLE_TASKS
                     )
                 Platform.TODOIST ->
-                    context?.openUri(R.string.url_todoist)
+                    startActivityForResult(
+                        Intent(requireContext(), TodoistAccountSettingsActivity::class.java),
+                        REQUEST_TODOIST_SETTINGS
+                    )
                 Platform.MICROSOFT ->
                     microsoftVM.signIn(requireActivity())
                 Platform.DAVX5 ->
@@ -300,6 +304,7 @@ class MainSettingsFragment : InjectingPreferenceFragment() {
         const val REQUEST_CALDAV_SETTINGS = 10013
         const val REQUEST_GOOGLE_TASKS = 10014
         const val REQUEST_TASKS_ORG = 10016
+        const val REQUEST_TODOIST_SETTINGS = 10017
 
         fun PreferenceScreen.removeAt(index: Int, count: Int = 1) {
             repeat(count) {
