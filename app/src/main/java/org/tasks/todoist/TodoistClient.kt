@@ -73,7 +73,7 @@ class TodoistClient(
                         TodoistCollection().apply {
                             uid = project.optString("id", "")
                             meta.name = project.optString("name", "")
-                            meta.color = project.optString("color", null)
+                            meta.color = project.optString("color", "")
                             meta.mtime = currentTimeMillis()
                             stoken = newSyncToken
                         }
@@ -214,7 +214,6 @@ class TodoistClient(
                     val todoistItem = TodoistItem().apply {
                         uid = permanentId
                         contentString = taskContent
-                        content = content
                         meta.name = taskContent
                         meta.mtime = currentTimeMillis()
                     }

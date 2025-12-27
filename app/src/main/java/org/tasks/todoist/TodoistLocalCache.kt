@@ -174,7 +174,7 @@ class TodoistLocalCache private constructor(private val context: Context, privat
                         val metaJson = collectionJson.optJSONObject("meta")
                         if (metaJson != null) {
                             meta.name = metaJson.optString("name", "")
-                            meta.color = metaJson.optString("color", null)
+                            meta.color = metaJson.optString("color", "")
                             meta.mtime = metaJson.optLong("mtime", 0)
                         }
                     }
@@ -247,7 +247,7 @@ class TodoistLocalCache private constructor(private val context: Context, privat
                                     val metaJson = itemJson.optJSONObject("meta")
                                     if (metaJson != null) {
                                         meta.name = metaJson.optString("name", "")
-                                        meta.color = metaJson.optString("color", null)
+                                        meta.color = metaJson.optString("color", "")
                                         meta.mtime = metaJson.optLong("mtime", 0)
                                     }
                                 }
