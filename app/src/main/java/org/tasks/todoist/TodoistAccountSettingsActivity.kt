@@ -95,7 +95,7 @@ class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Tool
         val toolbar = binding.toolbar.toolbar
         toolbar.title = if (caldavAccount == null) getString(R.string.add_account) else caldavAccount!!.name
         toolbar.navigationIcon = AppCompatResources.getDrawable(this, R.drawable.ic_outline_save_24px)
-        toolbar.setNavigationOnClickListener { save() }
+        toolbar.setNavigationOnClickListener { onSaveNewAccountClicked() }
         toolbar.inflateMenu(menuRes)
         toolbar.setOnMenuItemClickListener(this)
         toolbar.showOverflowMenu()
@@ -171,6 +171,15 @@ class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Tool
 
     private fun updateUrlVisibility() {
         binding.urlLayout.visibility = if (binding.showAdvanced.isChecked) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Stub handler for the add-account save button.
+     *
+     * TODO: implement save new account with API token
+     */
+    private fun onSaveNewAccountClicked() {
+        // TODO: implement save new account with API token
     }
 
     override suspend fun addAccount(url: String, username: String, password: String) =
