@@ -45,7 +45,8 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Toolbar.OnMenuItemClickListener {
     @Inject lateinit var clientProvider: TodoistClientProvider
-
+    // TODO: Copy over the BaseCaldavAccountSettingsActivity and the CaldavAccountSettingsActivity.
+    //  Refactor and build off of these.
     private val addAccountViewModel: AddTodoistAccountViewModel by viewModels()
     private val updateAccountViewModel: UpdateTodoistAccountViewModel by viewModels()
 
