@@ -45,87 +45,18 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Toolbar.OnMenuItemClickListener {
     @Inject lateinit var clientProvider: TodoistClientProvider
-    // TODO: Copy over the BaseCaldavAccountSettingsActivity and the CaldavAccountSettingsActivity.
-    //  Refactor and build off of these.
+
     private val addAccountViewModel: AddTodoistAccountViewModel by viewModels()
     private val updateAccountViewModel: UpdateTodoistAccountViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        binding = ActivityCaldavAccountSettingsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            binding.toolbar.toolbar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                topMargin = systemBars.top
-            }
-            binding.rootLayout.updatePadding(bottom = systemBars.bottom)
-            insets
-        }
-        caldavAccount = if (savedInstanceState == null) intent.getParcelableExtra(EXTRA_CALDAV_DATA) else savedInstanceState.getParcelable(EXTRA_CALDAV_DATA)
-        serverType = mutableStateOf(
-            savedInstanceState?.getInt(EXTRA_SERVER_TYPE, SERVER_UNKNOWN)
-                ?: caldavAccount?.serverType
-                ?: SERVER_UNKNOWN
-        )
-        if (caldavAccount == null || caldavAccount!!.id == Task.NO_ID) {
-            binding.nameLayout.visibility = View.GONE
-            binding.description.visibility = View.VISIBLE
-            binding.description.setText(description)
-            Linkify.safeLinkify(binding.description, android.text.util.Linkify.WEB_URLS)
-            serverType.value = SERVER_UNKNOWN
-        } else {
-            binding.nameLayout.visibility = View.VISIBLE
-            binding.description.visibility = View.GONE
-            caldavAccount?.error?.takeIf { it.isNotBlank() }?.let {
-                binding.description.visibility = View.VISIBLE
-                binding.description.setTextColor(ContextCompat.getColor(this, R.color.overdue))
-                binding.description.text = getString(R.string.error_adding_account, it)
-            }
-        }
-        if (savedInstanceState == null) {
-            caldavAccount?.let {
-                if (!isNullOrEmpty(it.password)) {
-                    binding.password.setText(PASSWORD_MASK)
-                }
-            }
-        }
-        val toolbar = binding.toolbar.toolbar
-        toolbar.title = if (caldavAccount == null) getString(R.string.add_account) else caldavAccount!!.name
-        toolbar.navigationIcon = AppCompatResources.getDrawable(this, R.drawable.ic_outline_save_24px)
-        toolbar.setNavigationOnClickListener { onSaveNewAccountClicked() }
-        toolbar.inflateMenu(menuRes)
-        toolbar.setOnMenuItemClickListener(this)
-        toolbar.showOverflowMenu()
-        if (caldavAccount == null) {
-            toolbar.menu.findItem(R.id.remove).isVisible = false
-            binding.name.requestFocus()
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(binding.name, InputMethodManager.SHOW_IMPLICIT)
-        }
-        binding.password.addTextChangedListener(
-            onTextChanged = { _, _, _, _ -> binding.passwordLayout.error = null }
-        )
-        binding.serverSelector.setContent {
-            TasksTheme(
-                theme = tasksTheme.themeBase.index,
-                primary = tasksTheme.themeColor.primaryColor,
-            ) {
-                var selected by rememberSaveable { serverType }
-                ServerSelector(selected) {
-                    serverType.value = it
-                    selected = it
-                }
-            }
-        }
-
         binding.serverSelector.visibility = View.GONE
-        binding.showAdvanced.visibility = View.GONE
-        binding.urlLayout.visibility = View.GONE
-        binding.userLayout.visibility = View.GONE
-        binding.passwordLayout.hint = getString(R.string.todoist_api_token)
+        binding.showAdvanced.visibility = View.VISIBLE
+        binding.showAdvanced.setOnCheckedChangeListener { _, _ ->
+            updateUrlVisibility()
+        }
+        updateUrlVisibility()
     }
 
     override fun onResume() {
@@ -173,15 +104,6 @@ class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Tool
         binding.urlLayout.visibility = if (binding.showAdvanced.isChecked) View.VISIBLE else View.GONE
     }
 
-    /**
-     * Stub handler for the add-account save button.
-     *
-     * TODO: implement save new account with API token
-     */
-    private fun onSaveNewAccountClicked() {
-        // TODO: implement save new account with API token
-    }
-
     override suspend fun addAccount(url: String, username: String, password: String) =
         addAccountViewModel.addAccount(url, username, password)
 
@@ -190,21 +112,18 @@ class TodoistAccountSettingsActivity : BaseCaldavAccountSettingsActivity(), Tool
             url,
             username,
             if (PASSWORD_MASK == password) null else password,
-            caldavAccount!!.getPassword(encryption)
-        )
+            caldavAccount!!.getPassword(encryption))
 
     override suspend fun updateAccount() {
         caldavAccount!!.name = newName
         saveAccountAndFinish()
     }
 
-    /**
-     * For Todoist we don't actually use a user-entered URL. We return a fixed internal
-     * marker URL so that any generic code that expects a URL has something to store,
-     * but it should never be opened in a browser.
-     */
     override val newURL: String
-        get() = "todoist://api"
+        get() =
+            super.newURL
+                .takeIf { it.isNotBlank() }
+                ?: getString(R.string.url_todoist)
 
     override val newPassword: String
         get() = binding.password.text.toString().trim { it <= ' ' }
